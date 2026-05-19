@@ -1,0 +1,138 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# PPP3 GCC shortcut wrapper.
+# Intended use after aliasing:
+#   alias gcc="$HOME/bin/pppgcc"
+#
+# Then from this repository:
+#   gcc name.cpp
+#   ./name
+
+find_real_gcc() {
+    for c in gcc-16 gcc-15 gcc-14 gcc-13 gcc; do
+        if command -v "$c" >/dev/null 2>&1; then
+            local candidate
+            candidate="$(command -v "$c")"
+            if "$candidate" --version 2>/dev/null | grep -qi 'gcc'; then
+                printf '%s\n' "$candidate"
+                return 0
+            fi
+        fi
+    done
+    return 1
+}
+
+has_arg() {
+    local wanted="$1"
+    shift
+    local arg
+    for arg in "$@"; do
+        [[ "$arg" == "$wanted" ]] && return 0
+    done
+    return 1
+}
+
+find_std_cc() {
+    local gcc_include_root
+    gcc_include_root="$(dirname "$(dirname "$REAL_GCC")")/include/c++"
+
+    if [[ -d "$gcc_include_root" ]]; then
+        find "$gcc_include_root" -path '*/bits/std.cc' -print -quit 2>/dev/null
+        return 0
+    fi
+
+    for root in /opt/homebrew/Cellar/gcc /usr/local/Cellar/gcc /usr/include/c++; do
+        if [[ -d "$root" ]]; then
+            find "$root" -path '*/bits/std.cc' -print -quit 2>/dev/null
+            return 0
+        fi
+    done
+}
+
+REAL_GCC="$(find_real_gcc || true)"
+
+if [[ -z "${REAL_GCC:-}" ]]; then
+    echo "pppgcc: could not find GNU GCC. Install it with Homebrew, e.g. brew install gcc." >&2
+    exit 1
+fi
+
+cpp_files=()
+out=""
+compile_only=0
+args=("$@")
+
+for ((i=0; i<${#args[@]}; i++)); do
+    case "${args[$i]}" in
+        -o)
+            if (( i + 1 < ${#args[@]} )); then
+                out="${args[$((i+1))]}"
+            fi
+            ;;
+        -c)
+            compile_only=1
+            ;;
+        *.cpp|*.cc|*.cxx|*.C)
+            cpp_files+=("${args[$i]}")
+            ;;
+    esac
+done
+
+# If this is not compiling C++ source, pass through to real GCC.
+if [[ "${#cpp_files[@]}" -eq 0 ]]; then
+    exec "$REAL_GCC" "$@"
+fi
+
+# If one source file and no -o was given, build ./filename.
+if [[ -z "$out" && "${#cpp_files[@]}" -eq 1 && "$compile_only" -eq 0 ]]; then
+    src="${cpp_files[0]}"
+    base="$(basename "$src")"
+    out="${base%.*}"
+    args+=("-o" "$out")
+fi
+
+# Make sure C++23 modules are enabled unless caller already supplied them.
+final_args=()
+if ! has_arg "-std=c++23" "${args[@]}" && ! has_arg "-std=gnu++23" "${args[@]}"; then
+    final_args+=("-std=c++23")
+fi
+if ! has_arg "-fmodules-ts" "${args[@]}"; then
+    final_args+=("-fmodules-ts")
+fi
+final_args+=("${args[@]}")
+
+# Build import std support if std.o is missing and GCC provides bits/std.cc.
+if [[ "$compile_only" -eq 0 && ! -f "std.o" ]]; then
+    std_cc="$(find_std_cc || true)"
+    if [[ -n "${std_cc:-}" ]]; then
+        "$REAL_GCC" -std=c++23 -fmodules-ts -c "$std_cc" -o std.o
+    else
+        echo "pppgcc: warning: could not find GCC bits/std.cc; std.o was not rebuilt" >&2
+    fi
+fi
+
+# Build PPP module if this repo has PPP.cxx and PPP.o is missing/stale.
+if [[ -f "PPP.cxx" ]]; then
+    if [[ ! -f "PPP.o" || "PPP.cxx" -nt "PPP.o" || "PPP_support.h" -nt "PPP.o" ]]; then
+        "$REAL_GCC" -std=c++23 -fmodules-ts -c PPP.cxx
+    fi
+fi
+
+# For final links, add PPP module object files.
+if [[ "$compile_only" -eq 0 ]]; then
+    if [[ -f "PPP.o" ]] && ! has_arg "PPP.o" "${final_args[@]}"; then
+        final_args+=("PPP.o")
+    fi
+    if [[ -f "std.o" ]] && ! has_arg "std.o" "${final_args[@]}"; then
+        final_args+=("std.o")
+    fi
+    if ! has_arg "-lstdc++" "${final_args[@]}"; then
+        final_args+=("-lstdc++")
+    fi
+fi
+
+"$REAL_GCC" "${final_args[@]}"
+
+if [[ "$compile_only" -eq 0 && -n "$out" ]]; then
+    echo "Built ./$out"
+fi
