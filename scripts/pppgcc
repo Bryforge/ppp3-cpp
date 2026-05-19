@@ -6,7 +6,7 @@ set -euo pipefail
 #   alias gcc="$HOME/bin/pppgcc"
 #
 # Then from this repository:
-#   gcc name.cpp
+#   gcc ch1/name.cpp
 #   ./name
 
 find_real_gcc() {
@@ -29,6 +29,14 @@ has_arg() {
     local arg
     for arg in "$@"; do
         [[ "$arg" == "$wanted" ]] && return 0
+    done
+    return 1
+}
+
+has_include_path() {
+    local arg
+    for arg in "$@"; do
+        [[ "$arg" == "-I." || "$arg" == "-I" || "$arg" == -I* ]] && return 0
     done
     return 1
 }
@@ -84,6 +92,7 @@ if [[ "${#cpp_files[@]}" -eq 0 ]]; then
 fi
 
 # If one source file and no -o was given, build ./filename.
+# Example: gcc ch1/name.cpp -> ./name
 if [[ -z "$out" && "${#cpp_files[@]}" -eq 1 && "$compile_only" -eq 0 ]]; then
     src="${cpp_files[0]}"
     base="$(basename "$src")"
@@ -99,6 +108,13 @@ fi
 if ! has_arg "-fmodules-ts" "${args[@]}"; then
     final_args+=("-fmodules-ts")
 fi
+
+# Chapter folders use #include "PPP.h" while PPP.h stays at the repo root.
+# Add the repo root as an include path automatically.
+if [[ -f "PPP.h" ]] && ! has_include_path "${args[@]}"; then
+    final_args+=("-I.")
+fi
+
 final_args+=("${args[@]}")
 
 # Build import std support if std.o is missing and GCC provides bits/std.cc.
