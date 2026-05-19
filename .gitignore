@@ -1,0 +1,13 @@
+# Build outputs
+hello
+*.o
+*.out
+*.exe
+*.dSYM/
+build/
+
+# C++ module cache
+gcm.cache/
+
+# macOS
+.DS_Store
