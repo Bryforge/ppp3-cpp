@@ -4,6 +4,44 @@ This repository contains my C++ practice programs while studying *Programming: P
 
 The setup is designed for C++23 examples using GNU GCC on macOS, including support for PPP3's `import std;`, `PPP.h`, and `PPP_support.h`.
 
+## Repository organization
+
+Chapter work belongs in folders named `chNUM`:
+
+```text
+ch1/   # Chapter 1
+ch2/   # Chapter 2
+ch3/   # Chapter 3
+```
+
+PPP support files stay at the repository root and are shared by all chapter folders:
+
+```text
+PPP.h
+PPP.cxx
+PPP_support.h
+PPPheaders.h
+scripts/pppgcc
+```
+
+Example Chapter 1 files:
+
+```text
+ch1/hello.cpp
+ch1/name.cpp
+ch1/README.md
+```
+
+Build chapter programs from the repository root:
+
+```bash
+gcc ch1/hello.cpp
+./hello
+
+gcc ch1/name.cpp
+./name
+```
+
 ## Why this setup exists
 
 PPP3's support header uses modules:
@@ -12,21 +50,12 @@ PPP3's support header uses modules:
 import PPP;
 ```
 
-That means a program such as `name.cpp` does not only need to compile its own source file. It also needs the already-built module artifacts:
+That means a program such as `ch1/name.cpp` needs the already-built module artifacts:
 
 - `gcm.cache/std.gcm` and `std.o` for `import std;`
 - `gcm.cache/PPP.gcm` and `PPP.o` for `import PPP;`
 
-If those object files are not linked, GCC can compile the source but the linker will fail with:
-
-```text
-Undefined symbols for architecture arm64:
-  "initializer for module PPP"
-```
-
-## macOS note
-
-On macOS, `g++` may resolve to Apple `clang++`. Apple Clang does not understand GCC's `-fmodules-ts` option. Use GNU GCC instead, usually installed with Homebrew as `gcc-15`, `gcc-14`, or `gcc`.
+The `scripts/pppgcc` wrapper automates the build and link flags needed for these files.
 
 ## First-time shortcut setup
 
@@ -44,23 +73,9 @@ type gcc
 After that, this should work for normal PPP3 exercises:
 
 ```bash
-gcc name.cpp
+gcc ch1/name.cpp
 ./name
 ```
-
-The wrapper automatically uses C++23 module flags, builds `std.o` and `PPP.o` when needed, links them, and names the executable after the source file.
-
-## Manual build path
-
-The shortcut expands to the same basic shape as this:
-
-```bash
-gcc -std=c++23 -fmodules-ts -c PPP.cxx
-gcc -std=c++23 -fmodules-ts name.cpp PPP.o std.o -o name -lstdc++
-./name
-```
-
-If `std.o` is missing, build the GCC standard-library module first. The wrapper tries to find GCC's `bits/std.cc` automatically.
 
 ## PPP module source
 
@@ -74,28 +89,7 @@ export module PPP;
 export import std;
 ```
 
-The global module fragment gives `PPP_support.h` access to `size_t` without placing `#include <cstddef>` inside `PPP_support.h`. Putting `<cstddef>` inside `PPP_support.h` after `import std;` can cause GCC module redefinition errors.
-
-## Example program
-
-```cpp
-#include "PPP.h"
-
-int main()
-{
-    cout << "Please enter your first name (followed by 'enter'):\n";
-    string first_name;
-    cin >> first_name;
-    cout << "Hello, " << first_name << "!\n";
-}
-```
-
-Build and run:
-
-```bash
-gcc name.cpp
-./name
-```
+The global module fragment gives `PPP_support.h` access to `size_t` without placing `#include <cstddef>` inside `PPP_support.h`.
 
 ## More detail
 
