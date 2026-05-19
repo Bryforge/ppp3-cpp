@@ -1,0 +1,59 @@
+1. What is the purpose of the "Hello, World!" program?
+	The "Hello, World!" program is to prove that your programming setup works and to introduce
+	the basic workflow of programming in C++.
+
+2. Name the four parts of a function.
+	1) Return type
+	2) Function name
+	3) Parameter list
+	4) Function body
+
+3. Name a function that must appear in every C++ program.
+	main()
+
+4. In the "Hello, World!" program, what is the purpose of the line return 0;?
+	Means the end of the 'main()' function and reports that the program finished successfully.
+
+5. What is the purpose of the compiler?
+	The purpose of the compiler is to translate your C++ source code into a form the computer
+	can run.
+
+6. What is the purpose of the import statement?
+	The purpose of the import statement is to make code from a module available to your program.
+
+7. What is the purpose of the #include directive?
+	The purpose of the #include directive is to make the contents of another file available to
+	your program before it is compiled.
+
+8. What does a .cpp suffix at the end of a file name signify in C++?
+	This signifies that the file is a C++ source code file.
+
+9. What does the linker do for your program?
+	The linker takes the pieces produced by the compiler and combines them into one runnable
+	program.
+
+10. What is the difference between a source file and an object file?
+	A source file is the C++ code you write. An object file is the compiled version of that 
+	code that the linker uses to build the final program.
+
+11. What is an executable?
+	An executable is the final runnable program produced after your source code is compiled 
+	and linked.
+
+12. What is an IDE and what does it do for you?
+	It is a program that gives you the main tools you need to write and run programs in 
+	one place.
+
+13. How do you get a compiled program to run?
+	You get a compiled program to run by executing the executable file that the 
+	compiler/linker produced.
+
+14. What is a comment?
+	A comment is text in a program that is meant for human readers, not for the computer 
+	to execute.
+
+15. What is the purpose of a drill?
+	The purpose of a drill is to give you focused practice with a programming concept or tool.
+
+16. If you understand everything in the textbook, why is it necessary to practice?
+	Programming is a skill, not just knowledge.
