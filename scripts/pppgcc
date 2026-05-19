@@ -5,8 +5,13 @@ set -euo pipefail
 # Intended use after aliasing:
 #   alias gcc="$HOME/bin/pppgcc"
 #
-# Then from this repository:
+# From the repository root:
 #   gcc ch1/name.cpp
+#   ./name
+#
+# From a chapter folder:
+#   cd ch1
+#   gcc name.cpp
 #   ./name
 
 find_real_gcc() {
@@ -19,6 +24,18 @@ find_real_gcc() {
                 return 0
             fi
         fi
+    done
+    return 1
+}
+
+find_repo_root() {
+    local d="$CALL_DIR"
+    while [[ "$d" != "/" ]]; do
+        if [[ -f "$d/PPP.h" && -f "$d/PPP.cxx" ]]; then
+            printf '%s\n' "$d"
+            return 0
+        fi
+        d="$(dirname "$d")"
     done
     return 1
 }
@@ -41,7 +58,42 @@ has_include_path() {
     return 1
 }
 
+to_repo_path() {
+    local p="$1"
+    local abs dir base
+
+    if [[ "$p" == /* ]]; then
+        abs="$p"
+    else
+        dir="$(dirname "$p")"
+        base="$(basename "$p")"
+        abs="$(cd "$CALL_DIR/$dir" && pwd -P)/$base"
+    fi
+
+    if [[ "$abs" == "$REPO_ROOT/"* ]]; then
+        printf '%s\n' "${abs#"$REPO_ROOT/"}"
+    else
+        printf '%s\n' "$abs"
+    fi
+}
+
+to_call_output_path() {
+    local p="$1"
+    if [[ "$p" == /* ]]; then
+        printf '%s\n' "$p"
+    else
+        printf '%s/%s\n' "$CALL_DIR" "$p"
+    fi
+}
+
 find_std_cc() {
+    local printed
+    printed="$($REAL_GCC -print-file-name=bits/std.cc 2>/dev/null || true)"
+    if [[ -n "$printed" && -f "$printed" ]]; then
+        printf '%s\n' "$printed"
+        return 0
+    fi
+
     local gcc_include_root
     gcc_include_root="$(dirname "$(dirname "$REAL_GCC")")/include/c++"
 
@@ -58,6 +110,7 @@ find_std_cc() {
     done
 }
 
+CALL_DIR="$(pwd -P)"
 REAL_GCC="$(find_real_gcc || true)"
 
 if [[ -z "${REAL_GCC:-}" ]]; then
@@ -65,23 +118,42 @@ if [[ -z "${REAL_GCC:-}" ]]; then
     exit 1
 fi
 
+REPO_ROOT="$(find_repo_root || true)"
+
+# If this is not inside the PPP3 repo, pass through to real GCC.
+if [[ -z "${REPO_ROOT:-}" ]]; then
+    exec "$REAL_GCC" "$@"
+fi
+
 cpp_files=()
 out=""
+display_out=""
 compile_only=0
-args=("$@")
+raw_args=("$@")
+args=()
 
-for ((i=0; i<${#args[@]}; i++)); do
-    case "${args[$i]}" in
+for ((i=0; i<${#raw_args[@]}; i++)); do
+    case "${raw_args[$i]}" in
         -o)
-            if (( i + 1 < ${#args[@]} )); then
-                out="${args[$((i+1))]}"
+            args+=("-o")
+            if (( i + 1 < ${#raw_args[@]} )); then
+                out="$(to_call_output_path "${raw_args[$((i+1))]}")"
+                display_out="${raw_args[$((i+1))]}"
+                args+=("$out")
+                ((i++))
             fi
             ;;
         -c)
             compile_only=1
+            args+=("${raw_args[$i]}")
             ;;
         *.cpp|*.cc|*.cxx|*.C)
-            cpp_files+=("${args[$i]}")
+            src="$(to_repo_path "${raw_args[$i]}")"
+            cpp_files+=("$src")
+            args+=("$src")
+            ;;
+        *)
+            args+=("${raw_args[$i]}")
             ;;
     esac
 done
@@ -91,14 +163,20 @@ if [[ "${#cpp_files[@]}" -eq 0 ]]; then
     exec "$REAL_GCC" "$@"
 fi
 
-# If one source file and no -o was given, build ./filename.
-# Example: gcc ch1/name.cpp -> ./name
+# If one source file and no -o was given, build ./filename in the caller's directory.
+# Examples:
+#   repo root: gcc ch1/name.cpp -> ./name
+#   ch1/:     gcc name.cpp     -> ./name inside ch1/
 if [[ -z "$out" && "${#cpp_files[@]}" -eq 1 && "$compile_only" -eq 0 ]]; then
     src="${cpp_files[0]}"
     base="$(basename "$src")"
-    out="${base%.*}"
+    out="$CALL_DIR/${base%.*}"
+    display_out="./${base%.*}"
     args+=("-o" "$out")
 fi
+
+# Build from the repository root so GCC's module cache is shared at repo_root/gcm.cache.
+cd "$REPO_ROOT"
 
 # Make sure C++23 modules are enabled unless caller already supplied them.
 final_args=()
@@ -117,8 +195,8 @@ fi
 
 final_args+=("${args[@]}")
 
-# Build import std support if std.o is missing and GCC provides bits/std.cc.
-if [[ "$compile_only" -eq 0 && ! -f "std.o" ]]; then
+# Build import std support if std.o or gcm.cache/std.gcm is missing.
+if [[ "$compile_only" -eq 0 && ( ! -f "std.o" || ! -f "gcm.cache/std.gcm" ) ]]; then
     std_cc="$(find_std_cc || true)"
     if [[ -n "${std_cc:-}" ]]; then
         "$REAL_GCC" -std=c++23 -fmodules-ts -c "$std_cc" -o std.o
@@ -127,9 +205,9 @@ if [[ "$compile_only" -eq 0 && ! -f "std.o" ]]; then
     fi
 fi
 
-# Build PPP module if this repo has PPP.cxx and PPP.o is missing/stale.
+# Build PPP module if this repo has PPP.cxx and PPP.o or gcm.cache/PPP.gcm is missing/stale.
 if [[ -f "PPP.cxx" ]]; then
-    if [[ ! -f "PPP.o" || "PPP.cxx" -nt "PPP.o" || "PPP_support.h" -nt "PPP.o" ]]; then
+    if [[ ! -f "PPP.o" || ! -f "gcm.cache/PPP.gcm" || "PPP.cxx" -nt "PPP.o" || "PPP_support.h" -nt "PPP.o" ]]; then
         "$REAL_GCC" -std=c++23 -fmodules-ts -c PPP.cxx
     fi
 fi
@@ -149,6 +227,6 @@ fi
 
 "$REAL_GCC" "${final_args[@]}"
 
-if [[ "$compile_only" -eq 0 && -n "$out" ]]; then
-    echo "Built ./$out"
+if [[ "$compile_only" -eq 0 && -n "$display_out" ]]; then
+    echo "Built $display_out"
 fi
